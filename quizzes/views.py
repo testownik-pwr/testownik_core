@@ -20,6 +20,7 @@ from quizzes.serializers import (
     SharedQuizSerializer,
 )
 
+MAX_FILE_SIZE = 5 * 1024 * 1024
 
 @api_view(["GET"])
 def random_question_for_user(request):
@@ -183,9 +184,26 @@ def import_quiz_from_link(request):
     if not request.user.is_authenticated:
         return Response({"error": "Unauthorized"}, status=401)
     data = json.loads(request.body)
+
+    link = data.get("link")
+    validator = URLValidator()
+    try:
+        validator(link)
+    except ValidationError:
+        return Response({"error": "Invalid URL"}, status=400)
+
     try:
         r = requests.get(data.get("link"))
         r.raise_for_status()
+
+        content_length = int(r.headers.get("Content-Length", 0))
+        if content_length > MAX_FILE_SIZE:
+            return Response({"error": "File size exceeds the allowed limit"}, status=400)
+
+        content_type = r.headers.get("Content-Type", "")
+        if "application/json" not in content_type:
+            return Response({"error": "Invalid file type, expected JSON"}, status=400)
+
         _quiz = r.json()
     except requests.exceptions.RequestException as e:
         return Response({"error": str(e)}, status=400)
